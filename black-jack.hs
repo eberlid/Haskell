@@ -65,13 +65,13 @@ getDealerHand (Table _ dealerHand _) = dealerHand
 getPlayerBox :: Table -> Box
 getPlayerBox (Table _ _ playerBox) = playerBox
 
--- |Returns 'True' if the Deck is Black Jack
-isBlackJack :: Deck -> Bool
-isBlackJack deck = length deck == 2 && (any (\c -> getCardValue c == Ace) deck 
-    && ((any (\c -> getCardValue c == Ten) deck)
-        || any (\c -> getCardValue c == Jack) deck
-        || any (\c -> getCardValue c == Queen) deck
-        || any (\c -> getCardValue c == King) deck))
+-- |Returns 'True' if the Hand is Black Jack
+isBlackJack :: Hand -> Bool
+isBlackJack hand = length hand == 2 && (any (\c -> getCardValue c == Ace) hand 
+    && ((any (\c -> getCardValue c == Ten) hand)
+        || any (\c -> getCardValue c == Jack) hand
+        || any (\c -> getCardValue c == Queen) hand
+        || any (\c -> getCardValue c == King) hand))
 
 -- |Returns the Value of a card
 getCardValue :: Card -> CardValue
@@ -81,45 +81,45 @@ getCardValue (Card val _) = val
 getCardSuit :: Card -> Suit
 getCardSuit (Card _ suit) = suit
 
--- |Returns 'True' if the deck value is > 21
-isBust :: Deck -> Bool
-isBust deck = (deckValue deck) > 21
+-- |Returns 'True' if the hand value is > 21
+isBust :: Hand -> Bool
+isBust hand = (handValue hand) > 21
 
--- |Returns the value of the deck under the assumption that the number of hard aces must be minimal
-deckValue :: Deck -> Int
-deckValue deck = sumCardValues deck (acesAsOneCount deck)
+-- |Returns the value of the hand under the assumption that the number of hard aces must be minimal
+handValue :: Hand -> Int
+handValue hand = sumCardValues hand (acesAsOneCount hand)
 
--- |Returns the sum of the deck by counting the specified number of aces as one
-sumCardValues :: Deck -> Int -> Int
-sumCardValues deck acesAsOneCount =
-    (sum $ map hardCardValue (filterNonAces deck)) + 
+-- |Returns the sum of the hand by counting the specified number of aces as one
+sumCardValues :: Hand -> Int -> Int
+sumCardValues hand acesAsOneCount =
+    (sum $ map hardCardValue (filterNonAces hand)) + 
     (1 * acesAsOneCount) + 
-    (11 * ((aceCount deck) - acesAsOneCount))
+    (11 * ((aceCount hand) - acesAsOneCount))
 
 -- |Returns the number of Aces in the Deck
-aceCount :: Deck -> Int
-aceCount deck = length (filter isAce deck)
+aceCount :: Hand -> Int
+aceCount hand = length (filter isAce hand)
 
 -- |Returns 'True' if the card is an Ace
 isAce :: Card -> Bool
 isAce card = getCardValue card == Ace
 
 -- |Returns a filtered Deck without any aces
-filterNonAces :: Deck -> Deck
-filterNonAces deck = filter (not . isAce) deck
+filterNonAces :: Hand -> Hand
+filterNonAces hand = filter (not . isAce) hand
 
--- |Returns the number of Aces to be counted as one in the dealer deck so that the deck value is <=21
-acesAsOneCount :: Deck -> Int
-acesAsOneCount deck = acesAsOneCountLoop deck 0
+-- |Returns the number of Aces to be counted as one in the dealer hand so that the hand value is <=21
+acesAsOneCount :: Hand -> Int
+acesAsOneCount hand = acesAsOneCountLoop hand 0
 
--- |Recursive loop to determine the minimum number of Aces to be counted as 1 so that the deck value is <=21
-acesAsOneCountLoop :: Deck -> Int -> Int
-acesAsOneCountLoop deck n = 
-    if n < aceCount deck && sumCardValues deck n > 21
-    then acesAsOneCountLoop deck (n+1)
+-- |Recursive loop to determine the minimum number of Aces to be counted as 1 so that the hand value is <=21
+acesAsOneCountLoop :: Hand -> Int -> Int
+acesAsOneCountLoop hand n = 
+    if n < aceCount hand && sumCardValues hand n > 21
+    then acesAsOneCountLoop hand (n+1)
     else n
 
-boxCardCount :: [Deck] -> Int
+boxCardCount :: Box -> Int
 boxCardCount box = foldl (+) 0 (map (\d -> length d) box)
 
 -- |Returns a shuffled deck with the specified number of 52-card decks
@@ -162,40 +162,40 @@ playLoop deck numberOfRounds currentRound = do
         putStrLn ("Playing loop (" ++ show currentRound ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
 
         let table = playBox (drop 3 deck) [(head (drop 1 deck))] [head deck, head (drop 2 deck)]
-        putStrLn ("  > Dealer Deck (" ++ show (deckValue (getDealerHand table)) ++ "): " ++ show (getDealerHand table))
-        mapM (\ d -> putStrLn ("  > Player Deck (" ++ show (deckValue d) ++ "): " ++ show d)) (getPlayerBox table)
+        putStrLn ("  > Dealer Deck (" ++ show (handValue (getDealerHand table)) ++ "): " ++ show (getDealerHand table))
+        mapM (\ d -> putStrLn ("  > Player Deck (" ++ show (handValue d) ++ "): " ++ show d)) (getPlayerBox table)
         playLoop (getDeck table) numberOfRounds (currentRound + 1)
     else putStrLn ("End of Game")
 
-playBox :: Deck -> Deck -> Deck -> Table
-playBox deck dealerHand playerDeck = do
-    let playerBox = playDeck deck playerDeck
+playBox :: Deck -> Hand -> Hand -> Table
+playBox deck dealerHand playerHand = do
+    let playerBox = playHand deck playerHand
     let dealedCardCount = boxCardCount playerBox - 2
     Table (drop (dealedCardCount) deck) dealerHand playerBox
 
-playDeck :: Deck -> Deck -> [Deck]
-playDeck deck playerDeck 
-    | canSplit playerDeck = do
-        let left = playDeck deck [head playerDeck]
-        let right = playDeck (drop (boxCardCount left - 1) deck) [head (tail playerDeck)]
+playHand :: Deck -> Hand -> Box
+playHand deck playerHand 
+    | canSplit playerHand = do
+        let left = playHand deck [head playerHand]
+        let right = playHand (drop (boxCardCount left - 1) deck) [head (tail playerHand)]
         left ++ right
-    | canHit playerDeck && voteHit playerDeck = foldl (++) [] (map (\d -> playDeck (tail deck) d) [playerDeck ++ [head deck]])
-    | otherwise = [playerDeck]
+    | canHit playerHand && voteHit playerHand = foldl (++) [] (map (\d -> playHand (tail deck) d) [playerHand ++ [head deck]])
+    | otherwise = [playerHand]
 
 
-canSplit :: Deck -> Bool
-canSplit deck = length deck == 2 && deckValue (take 1 deck) == deckValue (drop 1 deck)
+canSplit :: Hand -> Bool
+canSplit hand = length hand == 2 && handValue (take 1 hand) == handValue (drop 1 hand)
 
-canHit :: Deck -> Bool
-canHit deck = deckValue deck <= 21
+canHit :: Hand -> Bool
+canHit hand = handValue hand <= 21
 
-voteHit :: Deck -> Bool
-voteHit deck = deckValue deck < 17
+voteHit :: Hand -> Bool
+voteHit hand = handValue hand < 17
 
 -- |Returns the initial balance of the player
 playerInitBalance :: Int
 playerInitBalance = 0
 
--- |Returns 'True' if the deck value is < 17
-doesDealerHit :: Deck -> Bool
-doesDealerHit deck = (deckValue deck) < 17
+-- |Returns 'True' if the hand value is < 17
+doesDealerHit :: Hand -> Bool
+doesDealerHit hand = (handValue hand) < 17
