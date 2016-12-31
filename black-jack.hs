@@ -169,33 +169,27 @@ playLoop deck numberOfRounds currentRound = do
 
 playBox :: Deck -> Hand -> Hand -> Table
 playBox deck dealerHand playerHand = do
-    let playerBox = playHand deck playerHand
+    let playerBox = playHand deck dealerHand playerHand
     let dealedCardCount = boxCardCount playerBox - 2
     Table (drop (dealedCardCount) deck) dealerHand playerBox
 
-playHand :: Deck -> Hand -> Box
-playHand deck playerHand 
+playHand :: Deck -> Hand -> Hand -> Box
+playHand deck dealerHand playerHand 
     | canSplit playerHand = do
-        let left = playHand deck [head playerHand]
-        let right = playHand (drop (boxCardCount left - 1) deck) [head (tail playerHand)]
+        let left = playHand deck dealerHand [head playerHand]
+        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand [head (tail playerHand)]
         left ++ right
-    | canHit playerHand && voteHit playerHand = foldl (++) [] (map (\d -> playHand (tail deck) d) [playerHand ++ [head deck]])
+    | canHit playerHand && voteHit dealerHand playerHand = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [playerHand ++ [head deck]])
     | otherwise = [playerHand]
-
 
 canSplit :: Hand -> Bool
 canSplit hand = length hand == 2 && handValue (take 1 hand) == handValue (drop 1 hand)
 
+voteSplit :: Hand -> Hand -> Bool
+voteSplit dealerHand playerHand = True
+
 canHit :: Hand -> Bool
 canHit hand = handValue hand <= 21
 
-voteHit :: Hand -> Bool
-voteHit hand = handValue hand < 17
-
--- |Returns the initial balance of the player
-playerInitBalance :: Int
-playerInitBalance = 0
-
--- |Returns 'True' if the hand value is < 17
-doesDealerHit :: Hand -> Bool
-doesDealerHit hand = (handValue hand) < 17
+voteHit :: Hand -> Hand -> Bool
+voteHit dealerHand playerHand = handValue playerHand < 17
