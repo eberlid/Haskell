@@ -122,6 +122,9 @@ acesAsOneCountLoop hand n =
 boxCardCount :: Box -> Int
 boxCardCount box = foldl (+) 0 (map (\d -> length d) box)
 
+boxHandCount :: Box -> Int
+boxHandCount box = length box
+
 -- |Returns a shuffled deck with the specified number of 52-card decks
 staticShuffledDeck :: Int -> Deck
 staticShuffledDeck deckCount = shuffle (createDeck deckCount)
@@ -142,6 +145,9 @@ createDeck deckCount =
     then []
     else [Card val su | val <- [Two .. Ace], su <- [Club .. Spade]] ++ createDeck (deckCount - 1)
 
+bet :: Int
+bet = 1
+
 -- |Returns the number of rounds to play
 numberOfRounds :: Int
 numberOfRounds = 10
@@ -153,25 +159,38 @@ play :: IO ()
 play = do 
     let deck = (staticShuffledDeck numberOfDecks)
     putStrLn (show (take 21 (drop 28 deck)))
-    playLoop deck numberOfRounds 0
+    playLoop deck numberOfRounds 0 0
 
-playLoop :: Deck -> Int -> Int -> IO ()
-playLoop deck numberOfRounds currentRound = do 
+playLoop :: Deck -> Int -> Int -> Int -> IO ()
+playLoop deck numberOfRounds currentRound balance = do 
     if (currentRound <= numberOfRounds)
     then do 
         putStrLn ("Playing loop (" ++ show currentRound ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
 
         let table = playBox (drop 3 deck) [(head (drop 1 deck))] [head deck, head (drop 2 deck)]
+        let earnings = evaluateEarnings table
+
         putStrLn ("  > Dealer Deck (" ++ show (handValue (getDealerHand table)) ++ "): " ++ show (getDealerHand table))
         mapM (\ d -> putStrLn ("  > Player Deck (" ++ show (handValue d) ++ "): " ++ show d)) (getPlayerBox table)
-        playLoop (getDeck table) numberOfRounds (currentRound + 1)
+        putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
+        putStrLn ("  > Balance: " ++ show (balance + earnings))
+        playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
     else putStrLn ("End of Game")
 
 playBox :: Deck -> Hand -> Hand -> Table
 playBox deck dealerHand playerHand = do
     let playerBox = playHand deck dealerHand playerHand
-    let dealedCardCount = boxCardCount playerBox - 2
-    Table (drop (dealedCardCount) deck) dealerHand playerBox
+    let playerBoxDealedCardCount = boxCardCount playerBox - 2
+
+    let finalDealerHand = dealerAction (drop (playerBoxDealedCardCount) deck) dealerHand
+    let dealerHandDealedCardCount = length finalDealerHand - 1
+    
+    Table (drop (playerBoxDealedCardCount + dealerHandDealedCardCount) deck) finalDealerHand playerBox
+
+dealerAction :: Deck -> Hand -> Hand
+dealerAction deck dealerHand 
+    | handValue dealerHand < 17 = dealerAction deck (dealerHand ++ [head deck])
+    | otherwise = dealerHand
 
 playHand :: Deck -> Hand -> Hand -> Box
 playHand deck dealerHand playerHand 
@@ -193,3 +212,18 @@ canHit hand = handValue hand <= 21
 
 voteHit :: Hand -> Hand -> Bool
 voteHit dealerHand playerHand = handValue playerHand < 17
+
+evaluateEarnings :: Table -> Int
+evaluateEarnings table =
+    bet * (winHandCount table)
+    - bet * (looseHandCount table)
+    - bet * (bustHandCount table)
+
+bustHandCount :: Table -> Int
+bustHandCount table = length (filter (\h -> handValue h > 21) (getPlayerBox table))
+
+winHandCount :: Table -> Int
+winHandCount table = length (filter (\h -> handValue h <= 21 && (handValue h > handValue (getDealerHand table))) (getPlayerBox table))
+
+looseHandCount :: Table -> Int
+looseHandCount table = length (filter (\h -> handValue h <= 21 && (handValue h < handValue (getDealerHand table)) && not (isBust (getDealerHand table))) (getPlayerBox table))
