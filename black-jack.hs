@@ -73,6 +73,9 @@ isBlackJack hand = length hand == 2 && (any (\c -> getCardValue c == Ace) hand
         || any (\c -> getCardValue c == Queen) hand
         || any (\c -> getCardValue c == King) hand))
 
+isNotBlackJack :: Hand -> Bool
+isNotBlackJack hand = not (isBlackJack hand)
+
 -- |Returns the Value of a card
 getCardValue :: Card -> CardValue
 getCardValue (Card val _) = val
@@ -84,6 +87,9 @@ getCardSuit (Card _ suit) = suit
 -- |Returns 'True' if the hand value is > 21
 isBust :: Hand -> Bool
 isBust hand = (handValue hand) > 21
+
+isNotBust :: Hand -> Bool
+isNotBust hand = not (isBust hand)
 
 -- |Returns the value of the hand under the assumption that the number of hard aces must be minimal
 handValue :: Hand -> Int
@@ -145,8 +151,8 @@ createDeck deckCount =
     then []
     else [Card val su | val <- [Two .. Ace], su <- [Club .. Spade]] ++ createDeck (deckCount - 1)
 
-bet :: Int
-bet = 1
+bet :: Float
+bet = 1.0
 
 -- |Returns the number of rounds to play
 numberOfRounds :: Int
@@ -161,7 +167,7 @@ play = do
     putStrLn (show (take 21 (drop 28 deck)))
     playLoop deck numberOfRounds 0 0
 
-playLoop :: Deck -> Int -> Int -> Int -> IO ()
+playLoop :: Deck -> Int -> Int -> Float -> IO ()
 playLoop deck numberOfRounds currentRound balance = do 
     if (currentRound <= numberOfRounds)
     then do 
@@ -170,8 +176,8 @@ playLoop deck numberOfRounds currentRound balance = do
         let table = playBox (drop 3 deck) [(head (drop 1 deck))] [head deck, head (drop 2 deck)]
         let earnings = evaluateEarnings table
 
-        putStrLn ("  > Dealer Deck (" ++ show (handValue (getDealerHand table)) ++ "): " ++ show (getDealerHand table))
-        mapM (\ d -> putStrLn ("  > Player Deck (" ++ show (handValue d) ++ "): " ++ show d)) (getPlayerBox table)
+        putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getDealerHand table))) ++ "): " ++ show (getDealerHand table))
+        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack d) then "BJ" else show (handValue d)) ++ "): " ++ show d)) (getPlayerBox table)
         putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
         putStrLn ("  > Balance: " ++ show (balance + earnings))
         playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
@@ -213,17 +219,41 @@ canHit hand = handValue hand <= 21
 voteHit :: Hand -> Hand -> Bool
 voteHit dealerHand playerHand = handValue playerHand < 17
 
-evaluateEarnings :: Table -> Int
+evaluateEarnings :: Table -> Float
 evaluateEarnings table =
-    bet * (winHandCount table)
-    - bet * (looseHandCount table)
-    - bet * (bustHandCount table)
+    bet * fromIntegral(winHandCount table)
+    + 3.0 / 2.0 * bet * fromIntegral(blackJackHandCount table)
+    - bet * fromIntegral(looseHandCount table)
+    - bet * fromIntegral(bustHandCount table)
+
+isDealerBust :: Table -> Bool
+isDealerBust table = isBust (getDealerHand table)
+
+isDealerNotBust :: Table -> Bool
+isDealerNotBust table = not (isDealerBust table)
 
 bustHandCount :: Table -> Int
-bustHandCount table = length (filter (\h -> handValue h > 21) (getPlayerBox table))
-
-winHandCount :: Table -> Int
-winHandCount table = length (filter (\h -> handValue h <= 21 && (handValue h > handValue (getDealerHand table))) (getPlayerBox table))
+bustHandCount table = length (filter (\h -> isBust h) (getPlayerBox table))
 
 looseHandCount :: Table -> Int
-looseHandCount table = length (filter (\h -> handValue h <= 21 && (handValue h < handValue (getDealerHand table)) && not (isBust (getDealerHand table))) (getPlayerBox table))
+looseHandCount table = length (filter (\h -> 
+    (isNotBlackJack h 
+    && isNotBlackJack (getDealerHand table)
+    && isNotBust h 
+    && isDealerNotBust table 
+    && (handValue h < handValue (getDealerHand table)))
+    || (isNotBlackJack h 
+        && isBlackJack (getDealerHand table))) (getPlayerBox table))
+
+winHandCount :: Table -> Int
+winHandCount table = length (filter (\h -> 
+    isNotBlackJack h
+    && isNotBlackJack (getDealerHand table)
+    && isNotBust h 
+    && isDealerNotBust table 
+    && (handValue h > handValue (getDealerHand table))) (getPlayerBox table))
+
+blackJackHandCount :: Table -> Int
+blackJackHandCount table = length (filter (\h -> 
+    isBlackJack h 
+    && isNotBlackJack (getDealerHand table)) (getPlayerBox table))
