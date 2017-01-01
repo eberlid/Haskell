@@ -186,7 +186,7 @@ playLoop deck numberOfRounds currentRound balance = do
         let earnings = evaluateEarnings table
 
         putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getDealerHand table))) ++ "): " ++ show (getDealerHand table))
-        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack (getPlayerHand d)) then "BJ" else show (handValue (getPlayerHand d))) ++ "): " ++ show d)) (getPlayerBox table)
+        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack (getPlayerHand d)) then "BJ" else show (handValue (getPlayerHand d))) ++ "): " ++ show (getPlayerHand d))) (getPlayerBox table)
         putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
         putStrLn ("  > Balance: " ++ show (balance + earnings))
         playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
@@ -210,11 +210,11 @@ dealerAction deck dealerHand
 playHand :: Deck -> Hand -> PlayerDeck -> Box
 playHand deck dealerHand playerDeck 
     | canSplit (getPlayerHand playerDeck) = do
-        let left = playHand deck dealerHand (PlayerDeck [head (getPlayerHand playerDeck)] 0)
-        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck [head (tail (getPlayerHand playerDeck))] 0)
+        let left = playHand deck dealerHand (PlayerDeck [head (getPlayerHand playerDeck)] (getHandBet playerDeck))
+        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck [head (tail (getPlayerHand playerDeck))] (getHandBet playerDeck))
         left ++ right
-    | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [PlayerDeck ((getPlayerHand playerDeck) ++ [head deck]) 0])
-    | otherwise = [PlayerDeck (getPlayerHand playerDeck) 0.0]
+    | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [PlayerDeck ((getPlayerHand playerDeck) ++ [head deck]) (getHandBet playerDeck)])
+    | otherwise = [playerDeck]
 
 canSplit :: Hand -> Bool
 canSplit hand = length hand == 2 && handValue (take 1 hand) == handValue (drop 1 hand)
@@ -230,11 +230,10 @@ voteHit dealerHand playerHand = handValue playerHand < 17
 
 evaluateEarnings :: Table -> Float
 evaluateEarnings table =
-    -- TODO take 'bet' from PlayerDeck
-    bet * fromIntegral(winHandCount table)
-    + 3.0 / 2.0 * bet * fromIntegral(blackJackHandCount table)
-    - bet * fromIntegral(looseHandCount table)
-    - bet * fromIntegral(bustHandCount table)
+    winHandSum table
+    + blackJackHandSum table
+    - looseHandSum table
+    - bustHandSum table
 
 isDealerBust :: Table -> Bool
 isDealerBust table = isBust (getDealerHand table)
@@ -242,28 +241,29 @@ isDealerBust table = isBust (getDealerHand table)
 isDealerNotBust :: Table -> Bool
 isDealerNotBust table = not (isDealerBust table)
 
-bustHandCount :: Table -> Int
-bustHandCount table = length (filter (\h -> isBust (getPlayerHand h)) (getPlayerBox table))
+bustHandSum :: Table -> Float
+bustHandSum table = foldl (+) 0 (map (\h -> (getHandBet h))
+    (filter (\d -> isBust (getPlayerHand d)) (getPlayerBox table)))
 
-looseHandCount :: Table -> Int
-looseHandCount table = length (filter (\h -> 
-    (isNotBlackJack (getPlayerHand h)
+looseHandSum :: Table -> Float
+looseHandSum table = foldl (+) 0 (map (\h -> (getHandBet h))
+    (filter (\d -> (isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getPlayerHand h)
+    && isNotBust (getPlayerHand d)
     && isDealerNotBust table 
-    && (handValue (getPlayerHand h) < handValue (getDealerHand table)))
-    || (isNotBlackJack (getPlayerHand h) 
-        && isBlackJack (getDealerHand table))) (getPlayerBox table))
+    && (handValue (getPlayerHand d) < handValue (getDealerHand table)))
+    || (isNotBlackJack (getPlayerHand d) 
+        && isBlackJack (getDealerHand table))) (getPlayerBox table)))
 
-winHandCount :: Table -> Int
-winHandCount table = length (filter (\h -> 
-    isNotBlackJack (getPlayerHand h)
+winHandSum :: Table -> Float
+winHandSum table = foldl (+) 0 (map (\h -> (getHandBet h)) 
+    (filter (\d -> isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getPlayerHand h)
+    && isNotBust (getPlayerHand d)
     && isDealerNotBust table 
-    && (handValue (getPlayerHand h) > handValue (getDealerHand table))) (getPlayerBox table))
+    && (handValue (getPlayerHand d) > handValue (getDealerHand table))) (getPlayerBox table)))
 
-blackJackHandCount :: Table -> Int
-blackJackHandCount table = length (filter (\h -> 
-    isBlackJack (getPlayerHand h) 
-    && isNotBlackJack (getDealerHand table)) (getPlayerBox table))
+blackJackHandSum :: Table -> Float
+blackJackHandSum table = foldl (+) 0 (map (\h -> 3.0 / 2.0 * (getHandBet h))
+    (filter (\d -> isBlackJack (getPlayerHand d) 
+    && isNotBlackJack (getDealerHand table)) (getPlayerBox table)))
