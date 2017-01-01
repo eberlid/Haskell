@@ -1,6 +1,9 @@
-module Main where
+module BlackJack (play, foo) where
 
 import Data.List
+
+foo :: ()
+foo = ()
 
 data RoundResult = PlayerWin | PlayerBust | StandOff | PlayerLoose | PlayerBlackJack | Undefined
     deriving (Read, Show, Enum, Eq, Ord)
@@ -36,7 +39,7 @@ data Hand = Hand [Card] Bool Bool
 data PlayerDeck = PlayerDeck Hand Float
     deriving (Show)
 
--- |Declare 'Box' as a synonym of array of 'Deck'
+-- | Declare 'Box' as a synonym of array of 'Deck'
 data Box = Box [PlayerDeck] Int
     deriving (Show)
 
@@ -191,9 +194,6 @@ initNumberOfRounds = 40
 numberOfDecks :: Int
 numberOfDecks = 6
 
-main :: IO ()
-main = play
-
 play :: IO ()
 play = do 
     -- let deck = [Card Nine Spade, Card Five Heart, Card Nine Diamond, Card Two Heart, Card Five Club, Card Ten Heart, Card King Spade, Card Five Diamond]
@@ -259,7 +259,7 @@ playHand deck splitCount dealerHand playerDeck
     | canSplit (getPlayerHand playerDeck) splitCount && voteSplit dealerHand (getPlayerHand playerDeck) = do
         let leftCard = head (getCards (getPlayerHand playerDeck))
         let rightCard = head (tail (getCards (getPlayerHand playerDeck)))
-        let left = if isAce leftCard 
+        let left = if isAce leftCard
             then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) True False) (getBet playerDeck)] (splitCount + 1)
             else playHand deck (splitCount + 1) dealerHand (PlayerDeck (Hand [leftCard] True False) (getBet playerDeck))
         let right = if isAce rightCard 
