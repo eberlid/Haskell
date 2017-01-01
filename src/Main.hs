@@ -256,9 +256,15 @@ dealerAction deck dealerHand
 
 playHand :: Deck -> Int -> Hand -> PlayerDeck -> Box
 playHand deck splitCount dealerHand playerDeck
-    | canSplit (getPlayerHand playerDeck) splitCount = do
-        let left = playHand deck (splitCount + 1) dealerHand (PlayerDeck (Hand [head (getCards (getPlayerHand playerDeck))] True False) (getBet playerDeck))
-        let right = playHand (drop (boxCardCount left - 1) deck) (getSplitCount left) dealerHand (PlayerDeck (Hand [head (tail (getCards (getPlayerHand playerDeck)))] True False) (getBet playerDeck))
+    | canSplit (getPlayerHand playerDeck) splitCount && voteSplit dealerHand (getPlayerHand playerDeck) = do
+        let leftCard = head (getCards (getPlayerHand playerDeck))
+        let rightCard = head (tail (getCards (getPlayerHand playerDeck)))
+        let left = if isAce leftCard 
+            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) True False) (getBet playerDeck)] (splitCount + 1)
+            else playHand deck (splitCount + 1) dealerHand (PlayerDeck (Hand [leftCard] True False) (getBet playerDeck))
+        let right = if isAce rightCard 
+            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head (drop (boxCardCount left - 1) deck)]) True False) (getBet playerDeck)] (splitCount + 1)
+            else playHand (drop (boxCardCount left - 1) deck) (getSplitCount left) dealerHand (PlayerDeck (Hand [rightCard] True False) (getBet playerDeck))
         Box (getPlayerDecks left ++ getPlayerDecks right) (getSplitCount right)
     | canDouble (getPlayerHand playerDeck) && voteDouble (getPlayerHand playerDeck) = 
         Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) True) (2.0 * getBet playerDeck)] splitCount
@@ -286,9 +292,8 @@ voteHit :: Hand -> Hand -> Bool
 voteHit dealerHand playerHand = handValue playerHand < 17
 
 -- |Returns 'True' if the two cards of the hand sum up to 9, 10 or 11
--- TODO an a splitted ace only one card is dealed (but can split up to 3 times if ace is dealed)
 canDouble :: Hand -> Bool
-canDouble hand = (length (getCards hand) == 2) -- && (handValue hand == 9 || handValue hand == 10 || handValue hand == 11)
+canDouble hand = length (getCards hand) == 2 -- && (handValue hand == 9 || handValue hand == 10 || handValue hand == 11)
 
 voteDouble :: Hand -> Bool
 voteDouble hand = True
