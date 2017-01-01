@@ -2,8 +2,6 @@ module Main where
 
 import Data.List
 
--- ## Type definition ##
-
 data RoundResult = PlayerWin | PlayerBust | StandOff | PlayerLoose | PlayerBlackJack | Undefined
     deriving (Read, Show, Enum, Eq, Ord)
 
@@ -118,15 +116,14 @@ getCardSuit :: Card -> Suit
 getCardSuit (Card _ suit) = suit
 
 -- |Returns 'True' if the hand value is > 21
-isBust :: [Card] -> Bool
-isBust cards = handValue cards > 21
+isBust :: Hand -> Bool
+isBust hand = handValue hand > 21
 
-isNotBust :: [Card] -> Bool
-isNotBust cards = not (isBust cards)
+isNotBust :: Hand -> Bool
+isNotBust hand = not (isBust hand)
 
--- |Returns the value of the hand under the assumption that the number of hard aces must be minimal
-handValue :: [Card] -> Int
-handValue cards = sumCardValues cards (acesAsOneCount cards)
+handValue :: Hand -> Int
+handValue hand = if isDoubled hand then sumCardValues (getCards hand) 0 else sumCardValues (getCards hand) (acesAsOneCount (getCards hand))
 
 -- |Returns the sum of the hand by counting the specified number of aces as one
 sumCardValues :: [Card] -> Int -> Int
@@ -199,6 +196,7 @@ main = play
 
 play :: IO ()
 play = do 
+    -- let deck = [Card Nine Spade, Card Five Heart, Card Nine Diamond, Card Two Heart, Card Five Club, Card Ten Heart, Card King Spade, Card Five Diamond]
     let deck = staticShuffledDeck numberOfDecks
     printDeck deck
     playLoop deck initNumberOfRounds 0 0
@@ -224,7 +222,7 @@ printDeck :: Deck -> IO ()
 printDeck deck = putStrLn (concatMap (\ c -> "[" ++ show (fst c + 1) ++ "]: " ++ show (snd c) ++ "\r\n") (zip [0..length deck] deck))
 
 printDealerDeck :: Hand -> IO ()
-printDealerDeck hand = putStrLn ("    > Dealer Deck (" ++ (if isBlackJack hand then "BJ" else show (handValue (getCards hand))) ++ "): " ++ show (getCards hand))
+printDealerDeck hand = putStrLn ("    > Dealer Deck (" ++ (if isBlackJack hand then "BJ" else show (handValue hand)) ++ "): " ++ show (getCards hand))
 
 printPlayerBox :: Box -> IO ()
 printPlayerBox box = do
@@ -235,7 +233,7 @@ printPlayerBox box = do
 printPlayerDeck :: PlayerDeck -> IO ()
 printPlayerDeck playerDeck = putStrLn
     ("        > Player Deck [" ++ handMode (getPlayerHand playerDeck) ++ "] (" ++
-        (if isBlackJack (getPlayerHand playerDeck) then "BJ" else show (handValue (getCards (getPlayerHand playerDeck))))
+        (if isBlackJack (getPlayerHand playerDeck) then "BJ" else show (handValue (getPlayerHand playerDeck)))
             ++ "): " ++ show (getCards (getPlayerHand playerDeck)))
 
 handMode :: Hand -> String
@@ -253,7 +251,7 @@ playBox deck dealerHand playerDeck = do
 
 dealerAction :: Deck -> Hand -> Hand
 dealerAction deck dealerHand 
-    | handValue (getCards dealerHand) < 17 = dealerAction (tail deck) (Hand (getCards dealerHand ++ [head deck]) False False)
+    | handValue dealerHand < 17 = dealerAction (tail deck) (Hand (getCards dealerHand ++ [head deck]) False False)
     | otherwise = dealerHand
 
 playHand :: Deck -> Int -> Hand -> PlayerDeck -> Box
@@ -265,31 +263,32 @@ playHand deck splitCount dealerHand playerDeck
     | canDouble (getPlayerHand playerDeck) && voteDouble (getPlayerHand playerDeck) = 
         Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) True) (2.0 * getBet playerDeck)] splitCount
     | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = 
-        foldl 
-            (\x y -> Box (getPlayerDecks x ++ getPlayerDecks y) (getSplitCount y))
-            (Box [] 0) 
+        foldl (\x y -> Box (getPlayerDecks x ++ getPlayerDecks y) (getSplitCount y)) (Box [] 0) 
             (map (playHand (tail deck) splitCount dealerHand) [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) False) (getBet playerDeck)])
     | otherwise = Box [playerDeck] splitCount
 
 -- |Returns 'True' if the two cards have the same value
 canSplit :: Hand -> Int -> Bool
-canSplit hand splitCount = splitCount < 3 && length (getCards hand) == 2 && handValue (take 1 (getCards hand)) == handValue (drop 1 (getCards hand))
+canSplit hand splitCount = 
+    splitCount < 3 
+    && length (getCards hand) == 2 
+    && handValue (Hand (take 1 (getCards hand)) (isSplittedHand hand) (isDoubled hand)) 
+        == handValue (Hand (drop 1 (getCards hand)) (isSplittedHand hand) (isDoubled hand))
 
 voteSplit :: Hand -> Hand -> Bool
 voteSplit dealerHand playerHand = True
 
 -- |Returns 'True' if the value of the hand is less than 21 and the hand is not doubled
 canHit :: Hand -> Bool
-canHit hand = handValue (getCards hand) < 21 && not (isDoubled hand)
+canHit hand = handValue hand < 21 && not (isDoubled hand)
 
 voteHit :: Hand -> Hand -> Bool
-voteHit dealerHand playerHand = handValue (getCards playerHand) < 17
+voteHit dealerHand playerHand = handValue playerHand < 17
 
 -- |Returns 'True' if the two cards of the hand sum up to 9, 10 or 11
--- TODO in a doubled hand with soft value card (ace) the ace always counts 11
 -- TODO an a splitted ace only one card is dealed (but can split up to 3 times if ace is dealed)
 canDouble :: Hand -> Bool
-canDouble hand = (length (getCards hand) == 2) && (handValue (getCards hand) == 9 || handValue (getCards hand) == 10 || handValue (getCards hand) == 11)
+canDouble hand = (length (getCards hand) == 2) -- && (handValue hand == 9 || handValue hand == 10 || handValue hand == 11)
 
 voteDouble :: Hand -> Bool
 voteDouble hand = True
@@ -302,22 +301,22 @@ evaluateEarnings table =
     - bustHandSum table
 
 isDealerBust :: Table -> Bool
-isDealerBust table = isBust (getCards (getDealerHand table))
+isDealerBust table = isBust (getDealerHand table)
 
 isDealerNotBust :: Table -> Bool
 isDealerNotBust table = not (isDealerBust table)
 
 bustHandSum :: Table -> Float
 bustHandSum table = sum (map getBet
-    (filter (isBust . getCards . getPlayerHand) (getPlayerDecks (getPlayerBox table))))
+    (filter (isBust . getPlayerHand) (getPlayerDecks (getPlayerBox table))))
 
 looseHandSum :: Table -> Float
 looseHandSum table = sum (map getBet
     (filter (\d -> (isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getCards (getPlayerHand d))
+    && isNotBust (getPlayerHand d)
     && isDealerNotBust table 
-    && (handValue (getCards (getPlayerHand d)) < handValue (getCards (getDealerHand table))))
+    && (handValue (getPlayerHand d) < handValue (getDealerHand table)))
     || (isNotBlackJack (getPlayerHand d) 
         && isBlackJack (getDealerHand table))) (getPlayerDecks (getPlayerBox table))))
 
@@ -325,9 +324,9 @@ winHandSum :: Table -> Float
 winHandSum table = sum (map getBet 
     (filter (\d -> isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getCards (getPlayerHand d))
+    && isNotBust (getPlayerHand d)
     && isDealerNotBust table 
-    && (handValue (getCards (getPlayerHand d)) > handValue (getCards (getDealerHand table)))) (getPlayerDecks (getPlayerBox table))))
+    && (handValue (getPlayerHand d) > handValue (getDealerHand table))) (getPlayerDecks (getPlayerBox table))))
 
 blackJackHandSum :: Table -> Float
 blackJackHandSum table = sum (map (\h -> 3.0 / 2.0 * getBet h)
