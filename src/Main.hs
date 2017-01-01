@@ -16,7 +16,10 @@ data CardValue = Two | Three | Four | Five
     deriving (Read, Show, Enum, Eq, Ord)
 
 data Card = Card CardValue Suit
-    deriving (Read, Show, Eq)
+    deriving (Eq)
+
+instance Show Card where
+    show c = show (getCardValue c) ++ " of " ++ show (getCardSuit c)
 
 -- provide instance declarations for Ord and Enum
 instance Ord Card where
@@ -74,8 +77,11 @@ getBet (PlayerDeck _ b) = b
 getCards :: Hand -> [Card]
 getCards (Hand cards _ _) = cards
 
-isSplitted :: Hand -> Bool
-isSplitted (Hand _ split _) = split
+isSplitted :: PlayerDeck -> Bool
+isSplitted playerDeck = isSplittedHand (getPlayerHand playerDeck)
+
+isSplittedHand :: Hand -> Bool
+isSplittedHand (Hand _ split _) = split
 
 isDoubled :: Hand -> Bool
 isDoubled (Hand _ _ double) = double
@@ -175,7 +181,7 @@ bet = 1.0
 
 -- |Returns the number of rounds to play
 initNumberOfRounds :: Int
-initNumberOfRounds = 10
+initNumberOfRounds = 40
 
 numberOfDecks :: Int
 numberOfDecks = 6
@@ -186,23 +192,40 @@ main = play
 play :: IO ()
 play = do 
     let deck = staticShuffledDeck numberOfDecks
+    printDeck deck
     playLoop deck initNumberOfRounds 0 0
 
 playLoop :: Deck -> Int -> Int -> Float -> IO ()
-playLoop deck numberOfRounds currentRound balance =
-    if currentRound <= numberOfRounds
+playLoop deck numberOfRounds roundsPlayed balance =
+    if roundsPlayed < numberOfRounds
     then do 
-        putStrLn ("Playing loop (" ++ show currentRound ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
+        putStrLn ("Playing loop (" ++ show (roundsPlayed + 1) ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
 
         let table = playBox (drop 3 deck) (Hand [deck !! 1] False False) (PlayerDeck (Hand [head deck, deck !! 2] False False) bet)
         let earnings = evaluateEarnings table
 
-        putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getCards (getDealerHand table)))) ++ "): " ++ show (getCards (getDealerHand table)))
-        mapM_ (\ d -> putStrLn ("  > Player Deck (" ++ (if isBlackJack (getPlayerHand d) then "BJ" else show (handValue (getCards (getPlayerHand d)))) ++ "): " ++ show (getCards (getPlayerHand d)))) (getPlayerBox table)
+        printDealerDeck (getDealerHand table)
+        mapM_ printPlayerDeck (getPlayerBox table)
+
         putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
         putStrLn ("  > Balance: " ++ show (balance + earnings))
-        playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
+        playLoop (getDeck table) numberOfRounds (roundsPlayed + 1) (balance + earnings)
     else putStrLn "End of Game"
+
+printDeck :: Deck -> IO ()
+printDeck deck = putStrLn (concatMap (\ c -> "[" ++ show (fst c + 1) ++ "]: " ++ show (snd c) ++ "\r\n") (zip [0..length deck] deck))
+
+printDealerDeck :: Hand -> IO ()
+printDealerDeck hand = putStrLn ("  > Dealer Deck      (" ++ (if isBlackJack hand then "BJ" else show (handValue (getCards hand))) ++ "): " ++ show (getCards hand))
+
+printPlayerDeck :: PlayerDeck -> IO ()
+printPlayerDeck playerDeck = putStrLn
+    ("  > Player Deck [" ++ handMode (getPlayerHand playerDeck) ++ "] (" ++
+        (if isBlackJack (getPlayerHand playerDeck) then "BJ" else show (handValue (getCards (getPlayerHand playerDeck))))
+            ++ "): " ++ show (getCards (getPlayerHand playerDeck)))
+
+handMode :: Hand -> String
+handMode hand = (if isSplittedHand hand then "S" else "-") ++ (if isDoubled hand then "D" else "-")
 
 playBox :: Deck -> Hand -> PlayerDeck -> Table
 playBox deck dealerHand playerDeck = do
@@ -216,7 +239,7 @@ playBox deck dealerHand playerDeck = do
 
 dealerAction :: Deck -> Hand -> Hand
 dealerAction deck dealerHand 
-    | handValue (getCards dealerHand) < 17 = dealerAction deck (Hand (getCards dealerHand ++ [head deck]) False False)
+    | handValue (getCards dealerHand) < 17 = dealerAction (tail deck) (Hand (getCards dealerHand ++ [head deck]) False False)
     | otherwise = dealerHand
 
 playHand :: Deck -> Hand -> PlayerDeck -> Box
@@ -225,25 +248,33 @@ playHand deck dealerHand playerDeck
         let left = playHand deck dealerHand (PlayerDeck (Hand [head (getCards (getPlayerHand playerDeck))] True False) (getBet playerDeck))
         let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck (Hand [head (tail (getCards (getPlayerHand playerDeck)))] True False) (getBet playerDeck))
         left ++ right
+    | canDouble (getPlayerHand playerDeck) && voteDouble (getPlayerHand playerDeck) = 
+        [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) True) (2.0 * getBet playerDeck)]
     | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = concatMap (playHand (tail deck) dealerHand)
-        [PlayerDeck
-            (Hand (getCards (getPlayerHand playerDeck) ++ [head deck])
-                    (isSplitted (getPlayerHand playerDeck))
-                    False)
-            (getBet playerDeck)]
+        [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) False) (getBet playerDeck)]
     | otherwise = [playerDeck]
 
+-- |Returns 'True' if the two cards have the same value
+-- TODO: Implement max split depth of 3
 canSplit :: Hand -> Bool
 canSplit hand = length (getCards hand) == 2 && handValue (take 1 (getCards hand)) == handValue (drop 1 (getCards hand))
 
 voteSplit :: Hand -> Hand -> Bool
 voteSplit dealerHand playerHand = True
 
+-- |Returns 'True' if the value of the hand is less than 21 and the hand is not doubled
 canHit :: Hand -> Bool
-canHit hand = handValue (getCards hand) <= 21
+canHit hand = handValue (getCards hand) < 21 && not (isDoubled hand)
 
 voteHit :: Hand -> Hand -> Bool
 voteHit dealerHand playerHand = handValue (getCards playerHand) < 17
+
+-- |Returns 'True' if the two cards of the hand sum up to 9, 10 or 11
+canDouble :: Hand -> Bool
+canDouble hand = (length (getCards hand) == 2) && (handValue (getCards hand) == 9 || handValue (getCards hand) == 10 || handValue (getCards hand) == 11)
+
+voteDouble :: Hand -> Bool
+voteDouble hand = True
 
 evaluateEarnings :: Table -> Float
 evaluateEarnings table =
