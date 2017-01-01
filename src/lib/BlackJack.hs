@@ -1,9 +1,6 @@
-module BlackJack (play, foo) where
+module BlackJack (play, Table, showTables) where
 
 import Data.List
-
-foo :: ()
-foo = ()
 
 data RoundResult = PlayerWin | PlayerBust | StandOff | PlayerLoose | PlayerBlackJack | Undefined
     deriving (Read, Show, Enum, Eq, Ord)
@@ -43,8 +40,64 @@ data PlayerDeck = PlayerDeck Hand Float
 data Box = Box [PlayerDeck] Int
     deriving (Show)
 
-data Table = Table Deck Hand Box
+data Table = Table Deck Hand Box Int
     deriving (Show)
+
+shortCardValue :: CardValue -> String
+shortCardValue value 
+    | value == Two = "2"
+    | value == Three = "3"
+    | value == Four = "4"
+    | value == Five = "5"
+    | value == Six = "6"
+    | value == Seven = "7"
+    | value == Eight = "8"
+    | value == Nine = "9"
+    | value == Ten = "10"
+    | value == Jack = "J"
+    | value == Queen = "Q"
+    | value == King = "K"
+    | value == Ace = "A"
+    | otherwise = "x"
+
+shortCardSuit :: Suit -> String
+shortCardSuit suit 
+    | suit == Spade = "S"
+    | suit == Club = "C"
+    | suit == Diamond = "D"
+    | suit == Heart = "H"
+    | otherwise = "x"
+
+shortCard :: Card -> String
+shortCard card = shortCardValue (getCardValue card) ++ shortCardSuit (getCardSuit card)
+
+showTables :: [Table] -> String
+showTables tables = concatMap showTable tables ++
+    "    > Balance: " ++
+        show (foldl (\ x y -> x + evaluateEarnings y) 0 tables)
+
+showTable :: Table -> String
+showTable table = "Playing loop " ++ show (getLoopNumber table) ++ "\r\n" ++ showDealerDeck table ++ "\r\n" ++ showPlayerBox table ++ "\r\n" ++ "    > Preview: " ++ showDeckPreview table ++ "\r\n"
+
+showDeckPreview :: Table -> String
+showDeckPreview table = show (take 15 (map shortCard (getDeck table)))
+
+showDealerDeck :: Table -> String
+showDealerDeck table = "    > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getDealerHand table))) ++ "): " ++ show (getCards (getDealerHand table))
+
+showPlayerBox :: Table -> String
+showPlayerBox table = "    > Box SplitCount: " ++ show (getSplitCount (getPlayerBox table)) ++ "\r\n" ++
+    concatMap showPlayerDeck (getPlayerDecks (getPlayerBox table)) 
+        ++ "        > Yield: " ++ (if evaluateEarnings table > 0 then "+" else "") ++ show (evaluateEarnings table)
+
+showPlayerDeck :: PlayerDeck -> String
+showPlayerDeck playerDeck = "        > Player Deck [" ++ showHandMode (getPlayerHand playerDeck) ++ "] (" ++
+        (if isBlackJack (getPlayerHand playerDeck) then "BJ" else show (handValue (getPlayerHand playerDeck)))
+            ++ "): " ++ show (getCards (getPlayerHand playerDeck)) ++ "\r\n"
+
+showHandMode :: Hand -> String
+showHandMode hand = (if isSplittedHand hand then "S" else "-") ++ (if isDoubled hand then "D" else "-")
+
 
 hardCardValue :: Card -> Int
 hardCardValue c
@@ -62,13 +115,19 @@ hardCardValue c
     | getCardValue c == King  = 10
     | otherwise               = 0
 
+getCardCount :: Table -> Int
+getCardCount table = length (getCards (getDealerHand table)) + foldl (\x y -> x + length (getCards (getPlayerHand y))) 0 (getPlayerDecks (getPlayerBox table))
+
+getLoopNumber :: Table -> Int
+getLoopNumber (Table _ _ _ l) = l
+
 -- |Returns the Deck of a snapshot
 getDeck :: Table -> Deck
-getDeck (Table deck _ _) = deck
+getDeck (Table deck _ _ _) = deck
 
 -- |Returns the Dealer Hand of the table
 getDealerHand :: Table -> Hand
-getDealerHand (Table _ dealerHand _) = dealerHand
+getDealerHand (Table _ dealerHand _ _) = dealerHand
 
 getPlayerHand :: PlayerDeck -> Hand
 getPlayerHand (PlayerDeck hand _ ) = hand
@@ -96,7 +155,7 @@ isDoubled (Hand _ _ double) = double
 
 -- |Returns the Player Decks of a snapshot
 getPlayerBox :: Table -> Box
-getPlayerBox (Table _ _ playerBox) = playerBox
+getPlayerBox (Table _ _ playerBox _) = playerBox
 
 -- |Returns 'True' if the Hand is Black Jack
 isBlackJack :: Hand -> Bool
@@ -161,9 +220,6 @@ acesAsOneCountLoop cards n =
 boxCardCount :: Box -> Int
 boxCardCount box = sum (map (length . getCards . getPlayerHand) (getPlayerDecks box))
 
-boxHandCount :: Box -> Int
-boxHandCount box = length (getPlayerDecks box)
-
 -- |Returns a shuffled deck with the specified number of 52-card decks
 staticShuffledDeck :: Int -> Deck
 staticShuffledDeck deckCount = shuffle (createDeck deckCount)
@@ -187,67 +243,32 @@ createDeck deckCount =
 bet :: Float
 bet = 1.0
 
--- |Returns the number of rounds to play
-initNumberOfRounds :: Int
-initNumberOfRounds = 40
-
 numberOfDecks :: Int
 numberOfDecks = 6
 
-play :: IO ()
-play = do 
+play :: Int -> [Table]
+play numberOfRounds = do 
     -- let deck = [Card Nine Spade, Card Five Heart, Card Nine Diamond, Card Two Heart, Card Five Club, Card Ten Heart, Card King Spade, Card Five Diamond]
     let deck = staticShuffledDeck numberOfDecks
-    printDeck deck
-    playLoop deck initNumberOfRounds 0 0
+    playLoop deck numberOfRounds 0 0
 
-playLoop :: Deck -> Int -> Int -> Float -> IO ()
-playLoop deck numberOfRounds roundsPlayed balance =
-    if roundsPlayed < numberOfRounds
-    then do 
-        putStrLn ("Playing loop (" ++ show (roundsPlayed + 1) ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
+playLoop :: Deck -> Int -> Int -> Float -> [Table]
+playLoop deck numberOfRounds roundsPlayed balance = do
+    let table = (playBox (drop 3 deck) (Hand [deck !! 1] False False) (PlayerDeck (Hand [head deck, deck !! 2] False False) bet)) roundsPlayed
+    let earnings = evaluateEarnings table
+    if roundsPlayed < numberOfRounds 
+        then table : playLoop (getDeck table) numberOfRounds (roundsPlayed + 1) (balance + earnings)
+        else [table]
 
-        let table = playBox (drop 3 deck) (Hand [deck !! 1] False False) (PlayerDeck (Hand [head deck, deck !! 2] False False) bet)
-        let earnings = evaluateEarnings table
-
-        printDealerDeck (getDealerHand table)
-        printPlayerBox (getPlayerBox table)
-
-        putStrLn ("    > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
-        putStrLn ("    > Balance: " ++ show (balance + earnings))
-        playLoop (getDeck table) numberOfRounds (roundsPlayed + 1) (balance + earnings)
-    else putStrLn "End of Game"
-
-printDeck :: Deck -> IO ()
-printDeck deck = putStrLn (concatMap (\ c -> "[" ++ show (fst c + 1) ++ "]: " ++ show (snd c) ++ "\r\n") (zip [0..length deck] deck))
-
-printDealerDeck :: Hand -> IO ()
-printDealerDeck hand = putStrLn ("    > Dealer Deck (" ++ (if isBlackJack hand then "BJ" else show (handValue hand)) ++ "): " ++ show (getCards hand))
-
-printPlayerBox :: Box -> IO ()
-printPlayerBox box = do
-    putStrLn ("    > Box SplitCount: " ++ show (getSplitCount box))
-    mapM_ printPlayerDeck (getPlayerDecks box)
-
-
-printPlayerDeck :: PlayerDeck -> IO ()
-printPlayerDeck playerDeck = putStrLn
-    ("        > Player Deck [" ++ handMode (getPlayerHand playerDeck) ++ "] (" ++
-        (if isBlackJack (getPlayerHand playerDeck) then "BJ" else show (handValue (getPlayerHand playerDeck)))
-            ++ "): " ++ show (getCards (getPlayerHand playerDeck)))
-
-handMode :: Hand -> String
-handMode hand = (if isSplittedHand hand then "S" else "-") ++ (if isDoubled hand then "D" else "-")
-
-playBox :: Deck -> Hand -> PlayerDeck -> Table
-playBox deck dealerHand playerDeck = do
+playBox :: Deck -> Hand -> PlayerDeck -> Int -> Table
+playBox deck dealerHand playerDeck loopNumber = do
     let playerBox = playHand deck 0 dealerHand playerDeck
     let playerBoxDealedCardCount = boxCardCount playerBox - 2
 
     let finalDealerHand = dealerAction (drop playerBoxDealedCardCount deck) dealerHand
     let dealerHandDealedCardCount = length (getCards finalDealerHand) - 1
     
-    Table (drop (playerBoxDealedCardCount + dealerHandDealedCardCount) deck) finalDealerHand playerBox
+    Table (drop (playerBoxDealedCardCount + dealerHandDealedCardCount) deck) finalDealerHand playerBox loopNumber
 
 dealerAction :: Deck -> Hand -> Hand
 dealerAction deck dealerHand 
