@@ -271,6 +271,8 @@ voteHit :: Hand -> Hand -> Bool
 voteHit dealerHand playerHand = handValue (getCards playerHand) < 17
 
 -- |Returns 'True' if the two cards of the hand sum up to 9, 10 or 11
+-- TODO in a doubled hand with soft value card (ace) the ace always counts 11
+-- TODO an a splitted ace only one card is dealed (but can split up to 3 times if ace is dealed)
 canDouble :: Hand -> Bool
 canDouble hand = (length (getCards hand) == 2) && (handValue (getCards hand) == 9 || handValue (getCards hand) == 10 || handValue (getCards hand) == 11)
 
