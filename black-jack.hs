@@ -31,10 +31,13 @@ type Deck = [Card]
 
 type Hand = [Card]
 
--- |Declare 'Box' as a synonym of array of 'Deck'
-type Box = [Hand]
+data PlayerDeck = PlayerDeck Hand Float
+    deriving (Show)
 
-data Table = Table Deck Deck [Deck]
+-- |Declare 'Box' as a synonym of array of 'Deck'
+type Box = [PlayerDeck]
+
+data Table = Table Deck Hand Box
     deriving (Show)
 
 hardCardValue :: Card -> Int
@@ -60,6 +63,12 @@ getDeck (Table deck _ _) = deck
 -- |Returns the Dealer Hand of the table
 getDealerHand :: Table -> Hand
 getDealerHand (Table _ dealerHand _) = dealerHand
+
+getPlayerHand :: PlayerDeck -> Hand
+getPlayerHand (PlayerDeck hand _) = hand
+
+getHandBet :: PlayerDeck -> Float
+getHandBet (PlayerDeck _ bet) = bet
 
 -- |Returns the Player Decks of a snapshot
 getPlayerBox :: Table -> Box
@@ -126,7 +135,7 @@ acesAsOneCountLoop hand n =
     else n
 
 boxCardCount :: Box -> Int
-boxCardCount box = foldl (+) 0 (map (\d -> length d) box)
+boxCardCount box = foldl (+) 0 (map (\d -> length (getPlayerHand d)) box)
 
 boxHandCount :: Box -> Int
 boxHandCount box = length box
@@ -173,19 +182,19 @@ playLoop deck numberOfRounds currentRound balance = do
     then do 
         putStrLn ("Playing loop (" ++ show currentRound ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
 
-        let table = playBox (drop 3 deck) [(head (drop 1 deck))] [head deck, head (drop 2 deck)]
+        let table = playBox (drop 3 deck) [(head (drop 1 deck))] (PlayerDeck [head deck, head (drop 2 deck)] bet)
         let earnings = evaluateEarnings table
 
         putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getDealerHand table))) ++ "): " ++ show (getDealerHand table))
-        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack d) then "BJ" else show (handValue d)) ++ "): " ++ show d)) (getPlayerBox table)
+        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack (getPlayerHand d)) then "BJ" else show (handValue (getPlayerHand d))) ++ "): " ++ show d)) (getPlayerBox table)
         putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
         putStrLn ("  > Balance: " ++ show (balance + earnings))
         playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
     else putStrLn ("End of Game")
 
-playBox :: Deck -> Hand -> Hand -> Table
-playBox deck dealerHand playerHand = do
-    let playerBox = playHand deck dealerHand playerHand
+playBox :: Deck -> Hand -> PlayerDeck -> Table
+playBox deck dealerHand playerDeck = do
+    let playerBox = playHand deck dealerHand playerDeck
     let playerBoxDealedCardCount = boxCardCount playerBox - 2
 
     let finalDealerHand = dealerAction (drop (playerBoxDealedCardCount) deck) dealerHand
@@ -198,14 +207,14 @@ dealerAction deck dealerHand
     | handValue dealerHand < 17 = dealerAction deck (dealerHand ++ [head deck])
     | otherwise = dealerHand
 
-playHand :: Deck -> Hand -> Hand -> Box
-playHand deck dealerHand playerHand 
-    | canSplit playerHand = do
-        let left = playHand deck dealerHand [head playerHand]
-        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand [head (tail playerHand)]
+playHand :: Deck -> Hand -> PlayerDeck -> Box
+playHand deck dealerHand playerDeck 
+    | canSplit (getPlayerHand playerDeck) = do
+        let left = playHand deck dealerHand (PlayerDeck [head (getPlayerHand playerDeck)] 0)
+        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck [head (tail (getPlayerHand playerDeck))] 0)
         left ++ right
-    | canHit playerHand && voteHit dealerHand playerHand = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [playerHand ++ [head deck]])
-    | otherwise = [playerHand]
+    | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [PlayerDeck ((getPlayerHand playerDeck) ++ [head deck]) 0])
+    | otherwise = [PlayerDeck (getPlayerHand playerDeck) 0.0]
 
 canSplit :: Hand -> Bool
 canSplit hand = length hand == 2 && handValue (take 1 hand) == handValue (drop 1 hand)
@@ -221,6 +230,7 @@ voteHit dealerHand playerHand = handValue playerHand < 17
 
 evaluateEarnings :: Table -> Float
 evaluateEarnings table =
+    -- TODO take 'bet' from PlayerDeck
     bet * fromIntegral(winHandCount table)
     + 3.0 / 2.0 * bet * fromIntegral(blackJackHandCount table)
     - bet * fromIntegral(looseHandCount table)
@@ -233,27 +243,27 @@ isDealerNotBust :: Table -> Bool
 isDealerNotBust table = not (isDealerBust table)
 
 bustHandCount :: Table -> Int
-bustHandCount table = length (filter (\h -> isBust h) (getPlayerBox table))
+bustHandCount table = length (filter (\h -> isBust (getPlayerHand h)) (getPlayerBox table))
 
 looseHandCount :: Table -> Int
 looseHandCount table = length (filter (\h -> 
-    (isNotBlackJack h 
+    (isNotBlackJack (getPlayerHand h)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust h 
+    && isNotBust (getPlayerHand h)
     && isDealerNotBust table 
-    && (handValue h < handValue (getDealerHand table)))
-    || (isNotBlackJack h 
+    && (handValue (getPlayerHand h) < handValue (getDealerHand table)))
+    || (isNotBlackJack (getPlayerHand h) 
         && isBlackJack (getDealerHand table))) (getPlayerBox table))
 
 winHandCount :: Table -> Int
 winHandCount table = length (filter (\h -> 
-    isNotBlackJack h
+    isNotBlackJack (getPlayerHand h)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust h 
+    && isNotBust (getPlayerHand h)
     && isDealerNotBust table 
-    && (handValue h > handValue (getDealerHand table))) (getPlayerBox table))
+    && (handValue (getPlayerHand h) > handValue (getDealerHand table))) (getPlayerBox table))
 
 blackJackHandCount :: Table -> Int
 blackJackHandCount table = length (filter (\h -> 
-    isBlackJack h 
+    isBlackJack (getPlayerHand h) 
     && isNotBlackJack (getDealerHand table)) (getPlayerBox table))
