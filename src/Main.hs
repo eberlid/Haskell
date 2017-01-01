@@ -92,11 +92,12 @@ getPlayerBox (Table _ _ playerBox) = playerBox
 
 -- |Returns 'True' if the Hand is Black Jack
 isBlackJack :: Hand -> Bool
-isBlackJack hand = length (getCards hand) == 2 && (any (\c -> getCardValue c == Ace) (getCards hand)
-    && (any (\ c -> getCardValue c == Ten) (getCards hand) ||
-        any (\ c -> getCardValue c == Jack) (getCards hand) ||
-            any (\ c -> getCardValue c == Queen) (getCards hand) ||
-                any (\ c -> getCardValue c == King) (getCards hand)))
+isBlackJack hand = not (isSplittedHand hand) && 
+    length (getCards hand) == 2 && (any (\c -> getCardValue c == Ace) (getCards hand)
+        && (any (\ c -> getCardValue c == Ten) (getCards hand) ||
+            any (\ c -> getCardValue c == Jack) (getCards hand) ||
+                any (\ c -> getCardValue c == Queen) (getCards hand) ||
+                    any (\ c -> getCardValue c == King) (getCards hand)))
 
 isNotBlackJack :: Hand -> Bool
 isNotBlackJack hand = not (isBlackJack hand)
