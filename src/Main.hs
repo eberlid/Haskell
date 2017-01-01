@@ -1,6 +1,6 @@
+module Main where
+
 import Data.List
-import Control.Monad
-import System.Random
 
 -- ## Type definition ##
 
@@ -29,7 +29,8 @@ instance Enum Card where
 -- |Declare 'Deck' as a synonym of array of 'Card'
 type Deck = [Card]
 
-type Hand = [Card]
+data Hand = Hand [Card] Bool Bool
+    deriving (Show)
 
 data PlayerDeck = PlayerDeck Hand Float
     deriving (Show)
@@ -65,10 +66,19 @@ getDealerHand :: Table -> Hand
 getDealerHand (Table _ dealerHand _) = dealerHand
 
 getPlayerHand :: PlayerDeck -> Hand
-getPlayerHand (PlayerDeck hand _) = hand
+getPlayerHand (PlayerDeck hand _ ) = hand
 
-getHandBet :: PlayerDeck -> Float
-getHandBet (PlayerDeck _ bet) = bet
+getBet :: PlayerDeck -> Float
+getBet (PlayerDeck _ b) = b
+
+getCards :: Hand -> [Card]
+getCards (Hand cards _ _) = cards
+
+isSplitted :: Hand -> Bool
+isSplitted (Hand _ split _) = split
+
+isDoubled :: Hand -> Bool
+isDoubled (Hand _ _ double) = double
 
 -- |Returns the Player Decks of a snapshot
 getPlayerBox :: Table -> Box
@@ -76,11 +86,11 @@ getPlayerBox (Table _ _ playerBox) = playerBox
 
 -- |Returns 'True' if the Hand is Black Jack
 isBlackJack :: Hand -> Bool
-isBlackJack hand = length hand == 2 && (any (\c -> getCardValue c == Ace) hand 
-    && ((any (\c -> getCardValue c == Ten) hand)
-        || any (\c -> getCardValue c == Jack) hand
-        || any (\c -> getCardValue c == Queen) hand
-        || any (\c -> getCardValue c == King) hand))
+isBlackJack hand = length (getCards hand) == 2 && (any (\c -> getCardValue c == Ace) (getCards hand)
+    && (any (\ c -> getCardValue c == Ten) (getCards hand) ||
+        any (\ c -> getCardValue c == Jack) (getCards hand) ||
+            any (\ c -> getCardValue c == Queen) (getCards hand) ||
+                any (\ c -> getCardValue c == King) (getCards hand)))
 
 isNotBlackJack :: Hand -> Bool
 isNotBlackJack hand = not (isBlackJack hand)
@@ -94,51 +104,51 @@ getCardSuit :: Card -> Suit
 getCardSuit (Card _ suit) = suit
 
 -- |Returns 'True' if the hand value is > 21
-isBust :: Hand -> Bool
-isBust hand = (handValue hand) > 21
+isBust :: [Card] -> Bool
+isBust cards = handValue cards > 21
 
-isNotBust :: Hand -> Bool
-isNotBust hand = not (isBust hand)
+isNotBust :: [Card] -> Bool
+isNotBust cards = not (isBust cards)
 
 -- |Returns the value of the hand under the assumption that the number of hard aces must be minimal
-handValue :: Hand -> Int
-handValue hand = sumCardValues hand (acesAsOneCount hand)
+handValue :: [Card] -> Int
+handValue cards = sumCardValues cards (acesAsOneCount cards)
 
 -- |Returns the sum of the hand by counting the specified number of aces as one
-sumCardValues :: Hand -> Int -> Int
-sumCardValues hand acesAsOneCount =
-    (sum $ map hardCardValue (filterNonAces hand)) + 
-    (1 * acesAsOneCount) + 
-    (11 * ((aceCount hand) - acesAsOneCount))
+sumCardValues :: [Card] -> Int -> Int
+sumCardValues cards acesOsAne =
+    sum (map hardCardValue (filterNonAces cards)) +
+        (1 * acesOsAne) + 
+    (11 * (aceCount cards - acesOsAne))
 
 -- |Returns the number of Aces in the Deck
-aceCount :: Hand -> Int
-aceCount hand = length (filter isAce hand)
+aceCount :: [Card] -> Int
+aceCount cards = length (filter isAce cards)
 
 -- |Returns 'True' if the card is an Ace
 isAce :: Card -> Bool
 isAce card = getCardValue card == Ace
 
 -- |Returns a filtered Deck without any aces
-filterNonAces :: Hand -> Hand
-filterNonAces hand = filter (not . isAce) hand
+filterNonAces :: [Card] -> [Card]
+filterNonAces = filter (not . isAce)
 
 -- |Returns the number of Aces to be counted as one in the dealer hand so that the hand value is <=21
-acesAsOneCount :: Hand -> Int
-acesAsOneCount hand = acesAsOneCountLoop hand 0
+acesAsOneCount :: [Card] -> Int
+acesAsOneCount cards = acesAsOneCountLoop cards 0
 
 -- |Recursive loop to determine the minimum number of Aces to be counted as 1 so that the hand value is <=21
-acesAsOneCountLoop :: Hand -> Int -> Int
-acesAsOneCountLoop hand n = 
-    if n < aceCount hand && sumCardValues hand n > 21
-    then acesAsOneCountLoop hand (n+1)
+acesAsOneCountLoop :: [Card] -> Int -> Int
+acesAsOneCountLoop cards n = 
+    if n < aceCount cards && sumCardValues cards n > 21
+    then acesAsOneCountLoop cards (n+1)
     else n
 
 boxCardCount :: Box -> Int
-boxCardCount box = foldl (+) 0 (map (\d -> length (getPlayerHand d)) box)
+boxCardCount box = sum (map (length . getCards . getPlayerHand) box)
 
 boxHandCount :: Box -> Int
-boxHandCount box = length box
+boxHandCount = length
 
 -- |Returns a shuffled deck with the specified number of 52-card decks
 staticShuffledDeck :: Int -> Deck
@@ -164,69 +174,76 @@ bet :: Float
 bet = 1.0
 
 -- |Returns the number of rounds to play
-numberOfRounds :: Int
-numberOfRounds = 10
+initNumberOfRounds :: Int
+initNumberOfRounds = 10
 
 numberOfDecks :: Int
 numberOfDecks = 6
 
+main :: IO ()
+main = play
+
 play :: IO ()
 play = do 
-    let deck = (staticShuffledDeck numberOfDecks)
-    putStrLn (show (take 21 (drop 28 deck)))
-    playLoop deck numberOfRounds 0 0
+    let deck = staticShuffledDeck numberOfDecks
+    playLoop deck initNumberOfRounds 0 0
 
 playLoop :: Deck -> Int -> Int -> Float -> IO ()
-playLoop deck numberOfRounds currentRound balance = do 
-    if (currentRound <= numberOfRounds)
+playLoop deck numberOfRounds currentRound balance =
+    if currentRound <= numberOfRounds
     then do 
         putStrLn ("Playing loop (" ++ show currentRound ++ "/" ++ show numberOfRounds ++ ") with " ++ show (length deck) ++ " cards (" ++ show ((numberOfDecks * 52) - length deck) ++ " cards played).")
 
-        let table = playBox (drop 3 deck) [(head (drop 1 deck))] (PlayerDeck [head deck, head (drop 2 deck)] bet)
+        let table = playBox (drop 3 deck) (Hand [deck !! 1] False False) (PlayerDeck (Hand [head deck, deck !! 2] False False) bet)
         let earnings = evaluateEarnings table
 
-        putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getDealerHand table))) ++ "): " ++ show (getDealerHand table))
-        mapM (\ d -> putStrLn ("  > Player Deck (" ++ (if (isBlackJack (getPlayerHand d)) then "BJ" else show (handValue (getPlayerHand d))) ++ "): " ++ show (getPlayerHand d))) (getPlayerBox table)
+        putStrLn ("  > Dealer Deck (" ++ (if isBlackJack (getDealerHand table) then "BJ" else show (handValue (getCards (getDealerHand table)))) ++ "): " ++ show (getCards (getDealerHand table)))
+        mapM_ (\ d -> putStrLn ("  > Player Deck (" ++ (if isBlackJack (getPlayerHand d) then "BJ" else show (handValue (getCards (getPlayerHand d)))) ++ "): " ++ show (getCards (getPlayerHand d)))) (getPlayerBox table)
         putStrLn ("  > Yield: " ++ (if earnings > 0 then "+" else "") ++ show earnings)
         putStrLn ("  > Balance: " ++ show (balance + earnings))
         playLoop (getDeck table) numberOfRounds (currentRound + 1) (balance + earnings)
-    else putStrLn ("End of Game")
+    else putStrLn "End of Game"
 
 playBox :: Deck -> Hand -> PlayerDeck -> Table
 playBox deck dealerHand playerDeck = do
     let playerBox = playHand deck dealerHand playerDeck
     let playerBoxDealedCardCount = boxCardCount playerBox - 2
 
-    let finalDealerHand = dealerAction (drop (playerBoxDealedCardCount) deck) dealerHand
-    let dealerHandDealedCardCount = length finalDealerHand - 1
+    let finalDealerHand = dealerAction (drop playerBoxDealedCardCount deck) dealerHand
+    let dealerHandDealedCardCount = length (getCards finalDealerHand) - 1
     
     Table (drop (playerBoxDealedCardCount + dealerHandDealedCardCount) deck) finalDealerHand playerBox
 
 dealerAction :: Deck -> Hand -> Hand
 dealerAction deck dealerHand 
-    | handValue dealerHand < 17 = dealerAction deck (dealerHand ++ [head deck])
+    | handValue (getCards dealerHand) < 17 = dealerAction deck (Hand (getCards dealerHand ++ [head deck]) False False)
     | otherwise = dealerHand
 
 playHand :: Deck -> Hand -> PlayerDeck -> Box
 playHand deck dealerHand playerDeck 
     | canSplit (getPlayerHand playerDeck) = do
-        let left = playHand deck dealerHand (PlayerDeck [head (getPlayerHand playerDeck)] (getHandBet playerDeck))
-        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck [head (tail (getPlayerHand playerDeck))] (getHandBet playerDeck))
+        let left = playHand deck dealerHand (PlayerDeck (Hand [head (getCards (getPlayerHand playerDeck))] True False) (getBet playerDeck))
+        let right = playHand (drop (boxCardCount left - 1) deck) dealerHand (PlayerDeck (Hand [head (tail (getCards (getPlayerHand playerDeck)))] True False) (getBet playerDeck))
         left ++ right
-    | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = foldl (++) [] (map (\d -> playHand (tail deck) dealerHand d) [PlayerDeck ((getPlayerHand playerDeck) ++ [head deck]) (getHandBet playerDeck)])
+    | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = concatMap (playHand (tail deck) dealerHand)
+        [PlayerDeck
+            (Hand (getCards (getPlayerHand playerDeck) ++ [head deck])
+                    (isSplitted (getPlayerHand playerDeck))
+                    False)
+            (getBet playerDeck)]
     | otherwise = [playerDeck]
 
 canSplit :: Hand -> Bool
-canSplit hand = length hand == 2 && handValue (take 1 hand) == handValue (drop 1 hand)
+canSplit hand = length (getCards hand) == 2 && handValue (take 1 (getCards hand)) == handValue (drop 1 (getCards hand))
 
 voteSplit :: Hand -> Hand -> Bool
 voteSplit dealerHand playerHand = True
 
 canHit :: Hand -> Bool
-canHit hand = handValue hand <= 21
+canHit hand = handValue (getCards hand) <= 21
 
 voteHit :: Hand -> Hand -> Bool
-voteHit dealerHand playerHand = handValue playerHand < 17
+voteHit dealerHand playerHand = handValue (getCards playerHand) < 17
 
 evaluateEarnings :: Table -> Float
 evaluateEarnings table =
@@ -236,34 +253,34 @@ evaluateEarnings table =
     - bustHandSum table
 
 isDealerBust :: Table -> Bool
-isDealerBust table = isBust (getDealerHand table)
+isDealerBust table = isBust (getCards (getDealerHand table))
 
 isDealerNotBust :: Table -> Bool
 isDealerNotBust table = not (isDealerBust table)
 
 bustHandSum :: Table -> Float
-bustHandSum table = foldl (+) 0 (map (\h -> (getHandBet h))
-    (filter (\d -> isBust (getPlayerHand d)) (getPlayerBox table)))
+bustHandSum table = sum (map getBet
+    (filter (isBust . getCards . getPlayerHand) (getPlayerBox table)))
 
 looseHandSum :: Table -> Float
-looseHandSum table = foldl (+) 0 (map (\h -> (getHandBet h))
+looseHandSum table = sum (map getBet
     (filter (\d -> (isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getPlayerHand d)
+    && isNotBust (getCards (getPlayerHand d))
     && isDealerNotBust table 
-    && (handValue (getPlayerHand d) < handValue (getDealerHand table)))
+    && (handValue (getCards (getPlayerHand d)) < handValue (getCards (getDealerHand table))))
     || (isNotBlackJack (getPlayerHand d) 
         && isBlackJack (getDealerHand table))) (getPlayerBox table)))
 
 winHandSum :: Table -> Float
-winHandSum table = foldl (+) 0 (map (\h -> (getHandBet h)) 
+winHandSum table = sum (map getBet 
     (filter (\d -> isNotBlackJack (getPlayerHand d)
     && isNotBlackJack (getDealerHand table)
-    && isNotBust (getPlayerHand d)
+    && isNotBust (getCards (getPlayerHand d))
     && isDealerNotBust table 
-    && (handValue (getPlayerHand d) > handValue (getDealerHand table))) (getPlayerBox table)))
+    && (handValue (getCards (getPlayerHand d)) > handValue (getCards (getDealerHand table)))) (getPlayerBox table)))
 
 blackJackHandSum :: Table -> Float
-blackJackHandSum table = foldl (+) 0 (map (\h -> 3.0 / 2.0 * (getHandBet h))
+blackJackHandSum table = sum (map (\h -> 3.0 / 2.0 * getBet h)
     (filter (\d -> isBlackJack (getPlayerHand d) 
     && isNotBlackJack (getDealerHand table)) (getPlayerBox table)))
