@@ -1,4 +1,4 @@
-module BlackJack (play, getCards, freshHand, Table, Deck, Hand(..), dealerAction, createDeck, showTables, Card(..), CardValue (Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King, Ace), Suit (Spade, Diamond, Club, Heart)) where
+module BlackJack (play, getCards, freshHand, Table, Deck, Hand(..), dealerAction, canSplit, createDeck, showTables, Card(..), CardValue (Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King, Ace), Suit (Spade, Diamond, Club, Heart)) where
 
 data RoundResult = PlayerWin | PlayerBust | StandOff | PlayerLoose | PlayerBlackJack | Undefined
     deriving (Read, Show, Enum, Eq, Ord)

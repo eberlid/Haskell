@@ -7,7 +7,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = describe "BlackJack" $
+spec = describe "BlackJack" $ do
     describe "Dealer" $ do
         it "stands on hard seventeen" $
             dealerAction [] (freshHand [Card Ten Club, Card Seven Spade])
@@ -28,4 +28,24 @@ spec = describe "BlackJack" $
         it "hits on soft bust" $
             dealerAction [Card Six Club, Card Two Heart, Card Three Diamond] (freshHand [Card Ace Club, Card Five Spade])
             `shouldBe` freshHand [Card Ace Club, Card Five Spade, Card Six Club, Card Two Heart, Card Three Diamond]
-            
+    
+    describe "Split" $ do
+        it "when equal value and split count is zero is allowed " $
+            canSplit (Hand [Card Six Club, Card Six Spade] False False) 0
+            `shouldBe` True
+
+        it "when equal value and split count is one is allowed " $
+            canSplit (Hand [Card Six Club, Card Six Spade] False False) 1
+            `shouldBe` True
+
+        it "when equal value and split count is two is allowed " $
+            canSplit (Hand [Card Six Club, Card Six Spade] False False) 2
+            `shouldBe` True
+
+        it "when equal value and split count is three is not allowed " $
+            canSplit (Hand [Card Six Club, Card Six Spade] False False) 3
+            `shouldBe` False
+
+        it "when not equal value is not allowed " $
+            canSplit (Hand [Card Six Club, Card Ten Spade] False False) 0
+            `shouldBe` False

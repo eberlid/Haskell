@@ -10,3 +10,6 @@ Next install and register the package in the package database.
 
 Prepare to build the package, build the package and run the tests suite.
 `cabal configure --enable-tests && cabal build && cabal test`
+
+## TODOs
+- there is a `IsSplittedHand` field in `Hand` and also a `SplitCount` --> merge these data
