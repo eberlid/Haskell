@@ -1,4 +1,4 @@
-module BlackJack (play, getCards, Table, Deck, Hand(..), dealerAction, createDeck, showTables, Card(..), CardValue (Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King, Ace), Suit (Spade, Diamond, Club, Heart)) where
+module BlackJack (play, getCards, freshHand, Table, Deck, Hand(..), dealerAction, createDeck, showTables, Card(..), CardValue (Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King, Ace), Suit (Spade, Diamond, Club, Heart)) where
 
 data RoundResult = PlayerWin | PlayerBust | StandOff | PlayerLoose | PlayerBlackJack | Undefined
     deriving (Read, Show, Enum, Eq, Ord)
@@ -29,7 +29,7 @@ instance Enum Card where
 type Deck = [Card]
 
 data Hand = Hand [Card] Bool Bool
-    deriving (Show)
+    deriving (Show, Eq)
 
 data PlayerDeck = PlayerDeck Hand Float
     deriving (Show)
@@ -40,6 +40,9 @@ data Box = Box [PlayerDeck] Int
 
 data Table = Table Deck Hand Box Int
     deriving (Show)
+
+freshHand :: [Card] -> Hand
+freshHand cards = Hand cards False False
 
 shortCardValue :: CardValue -> String
 shortCardValue value 
