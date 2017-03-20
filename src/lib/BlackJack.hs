@@ -259,28 +259,28 @@ dealerAction deck dealerHand
     | otherwise = dealerHand
 
 playHand :: Deck -> Int -> Hand -> PlayerDeck -> Box
-playHand deck splitCount dealerHand playerDeck
-    | canSplit (getPlayerHand playerDeck) splitCount && voteSplit dealerHand (getPlayerHand playerDeck) = do
+playHand deck boxSplitCount dealerHand playerDeck
+    | canSplit (getPlayerHand playerDeck) boxSplitCount && voteSplit dealerHand (getPlayerHand playerDeck) = do
         let leftCard = head (getCards (getPlayerHand playerDeck))
         let rightCard = head (tail (getCards (getPlayerHand playerDeck)))
         let left = if isAce leftCard
-            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) True False) (getBet playerDeck)] (splitCount + 1)
-            else playHand deck (splitCount + 1) dealerHand (PlayerDeck (Hand [leftCard] True False) (getBet playerDeck))
+            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) True False) (getBet playerDeck)] (boxSplitCount + 1)
+            else playHand deck (boxSplitCount + 1) dealerHand (PlayerDeck (Hand [leftCard] True False) (getBet playerDeck))
         let right = if isAce rightCard 
-            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head (drop (boxCardCount left - 1) deck)]) True False) (getBet playerDeck)] (splitCount + 1)
+            then Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head (drop (boxCardCount left - 1) deck)]) True False) (getBet playerDeck)] (boxSplitCount + 1)
             else playHand (drop (boxCardCount left - 1) deck) (getSplitCount left) dealerHand (PlayerDeck (Hand [rightCard] True False) (getBet playerDeck))
         Box (getPlayerDecks left ++ getPlayerDecks right) (getSplitCount right)
     | canDouble (getPlayerHand playerDeck) && voteDouble (getPlayerHand playerDeck) = 
-        Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) True) (2.0 * getBet playerDeck)] splitCount
+        Box [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) True) (2.0 * getBet playerDeck)] boxSplitCount
     | canHit (getPlayerHand playerDeck) && voteHit dealerHand (getPlayerHand playerDeck) = 
         foldl (\x y -> Box (getPlayerDecks x ++ getPlayerDecks y) (getSplitCount y)) (Box [] 0) 
-            (map (playHand (tail deck) splitCount dealerHand) [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) False) (getBet playerDeck)])
-    | otherwise = Box [playerDeck] splitCount
+            (map (playHand (tail deck) boxSplitCount dealerHand) [PlayerDeck (Hand (getCards (getPlayerHand playerDeck) ++ [head deck]) (isSplitted playerDeck) False) (getBet playerDeck)])
+    | otherwise = Box [playerDeck] boxSplitCount
 
 -- |Returns 'True' if the two cards have the same value
 canSplit :: Hand -> Int -> Bool
-canSplit hand splitCount = 
-    splitCount < 3 
+canSplit hand boxSplitCount = 
+    boxSplitCount < 3 
     && length (getCards hand) == 2 
     && handValue (Hand (take 1 (getCards hand)) (isSplittedHand hand) (isDoubled hand)) 
         == handValue (Hand (drop 1 (getCards hand)) (isSplittedHand hand) (isDoubled hand))
