@@ -46,6 +46,10 @@ spec = describe "BlackJack" $ do
             canSplit (Hand [Card Six Club, Card Six Spade] False False) 3
             `shouldBe` False
 
-        it "when not equal value is not allowed " $
+        it "when not equal value and split count is zero is not allowed " $
             canSplit (Hand [Card Six Club, Card Ten Spade] False False) 0
+            `shouldBe` False
+
+        it "when not equal value and split count is three is not allowed " $
+            canSplit (Hand [Card Six Club, Card Ten Spade] False False) 3
             `shouldBe` False
