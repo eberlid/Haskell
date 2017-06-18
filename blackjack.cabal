@@ -47,7 +47,7 @@ cabal-version:       >=1.10
 
 library
       exposed-modules:  BlackJack
-      hs-source-dirs:   src\lib
+      hs-source-dirs:   src/lib
       build-depends:    base >=4.9 && <4.10
       default-language: Haskell2010
 
@@ -65,7 +65,7 @@ executable BlackJack
   build-depends:       base >=4.9 && <4.10, blackjack
   
   -- Directories containing source files.
-  hs-source-dirs:      src\exe
+  hs-source-dirs:      src/exe
   
   -- Base language which the package is written in.
   default-language:    Haskell2010
